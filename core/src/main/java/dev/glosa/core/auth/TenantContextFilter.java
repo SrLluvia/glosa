@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Optional;
 import java.util.UUID;
 import dev.glosa.core.tenant.TenantContext;
 import org.slf4j.Logger;
@@ -12,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -25,8 +25,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *
  * <p>The context is always cleared on the way out. Request threads are pooled,
  * so a tenant left bound would be inherited by whoever gets the thread next.
+ *
+ * <p>Deliberately not a {@code @Component}. Being a bean would make Boot register
+ * it in the servlet chain with no defined order relative to the security chain,
+ * and a run before authentication would read an unverified tenant. It is
+ * registered explicitly, after the bearer token filter, by the security
+ * configuration.
  */
-@Component
 public class TenantContextFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(TenantContextFilter.class);
@@ -44,11 +49,11 @@ public class TenantContextFilter extends OncePerRequestFilter {
         }
     }
 
-    private java.util.Optional<UUID> tenantOf(Authentication authentication) {
+    private Optional<UUID> tenantOf(Authentication authentication) {
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || !(authentication.getPrincipal() instanceof Jwt jwt)) {
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
 
         String claim = jwt.getClaimAsString(AccessTokenIssuer.TENANT_CLAIM);
@@ -57,14 +62,14 @@ public class TenantContextFilter extends OncePerRequestFilter {
             // the token predates a change in its shape. Refusing to guess is
             // safer than falling back to some default tenant.
             log.warn("Authenticated token carries no tenant claim; request will run unscoped");
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
 
         try {
-            return java.util.Optional.of(UUID.fromString(claim));
+            return Optional.of(UUID.fromString(claim));
         } catch (IllegalArgumentException e) {
             log.warn("Authenticated token carries a malformed tenant claim; request will run unscoped");
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
     }
 }
