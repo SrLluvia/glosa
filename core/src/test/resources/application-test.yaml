@@ -1,0 +1,15 @@
+# Test-only overrides, layered on top of the main application.yaml rather than
+# replacing it: a file named application.yaml here would shadow the real one and
+# silently drop every setting it does not repeat.
+#
+# The datasource and migration credentials are supplied dynamically by the
+# Testcontainers base class.
+glosa:
+  security:
+    jwt:
+      secret: test-only-signing-secret-not-used-anywhere-else
+
+logging:
+  level:
+    org.testcontainers: warn
+    com.github.dockerjava: warn
