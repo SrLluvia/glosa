@@ -15,6 +15,13 @@ spring:
     user: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
 
+  servlet:
+    multipart:
+      # Bounded so a single upload cannot exhaust memory or disk. The pipeline
+      # handles documentation, not media.
+      max-file-size: 25MB
+      max-request-size: 26MB
+
   mvc:
     problemdetails:
       # Errors are reported as RFC 7807 problem documents, including the ones

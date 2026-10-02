@@ -27,6 +27,11 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.CONFLICT, "Already exists", e.getMessage());
     }
 
+    @ExceptionHandler(UnsupportedDocumentException.class)
+    ProblemDetail handleUnsupportedDocument(UnsupportedDocumentException e) {
+        return problem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported document", e.getMessage());
+    }
+
     private static ProblemDetail problem(HttpStatus status, String title, String detail) {
         ProblemDetail problem = ProblemDetail.forStatus(status);
         problem.setTitle(title);
