@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: the job only reads the checkout. Nothing here publishes.
+permissions:
+  contents: read
+
+concurrency:
+  # A new push supersedes the run already in flight for the same branch.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: core (Java)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          # Caches ~/.m2 keyed on the pom, so a run that changes no dependency
+          # does not re-download the world.
+          cache: maven
+          cache-dependency-path: core/pom.xml
+
+      - name: Build and test
+        working-directory: core
+        # The suite starts a real PostgreSQL through Testcontainers; the hosted
+        # runner already has a Docker daemon, so nothing extra is needed.
+        run: ./mvnw -B --no-transfer-progress verify
+
+      - name: Publish test report
+        # Runs even when the build failed, which is exactly when the report is
+        # worth having.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: core/target/surefire-reports/
+          retention-days: 7
+          if-no-files-found: ignore
