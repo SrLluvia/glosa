@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -25,6 +26,9 @@ import org.springframework.security.web.SecurityFilterChain;
  */
 @Configuration(proxyBeanMethods = false)
 @EnableWebSecurity
+// Role checks live on the use cases, so they hold for every caller rather than
+// for one HTTP route.
+@EnableMethodSecurity
 class SecurityConfiguration {
 
     @Bean
@@ -43,6 +47,13 @@ class SecurityConfiguration {
                         // in configuration, so this leaks nothing about the
                         // database or its topology.
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                        // The API description and its UI. These expose the shape
+                        // of the API but none of its data, and the UI needs the
+                        // spec before a caller has a token. Turn both off in
+                        // production with springdoc.api-docs.enabled=false and
+                        // springdoc.swagger-ui.enabled=false.
+                        .requestMatchers(HttpMethod.GET, "/v3/api-docs", "/v3/api-docs/**",
+                                "/swagger-ui.html", "/swagger-ui/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .jwt(jwt -> jwt
