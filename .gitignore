@@ -1,4 +1,4 @@
-# Secretos y configuración local
+# Secrets and local configuration
 .env
 .env.*
 !.env.example
@@ -25,14 +25,17 @@ node_modules/
 dist/
 .vite/
 
-# Datos locales y modelos
+# Local data and models
 data/
 *.db
 *.sqlite
 
-# Editores y sistema
+# Editors and operating system
 .idea/
 .vscode/
 *.iml
 .DS_Store
 Thumbs.db
+
+# Local development token, never committed
+dev-token.txt
