@@ -41,10 +41,6 @@ class TenantIsolationTest extends PostgresIntegrationTest {
     /** Scoped view of the database, as the application sees it. */
     private static JdbcTemplate asApplication;
 
-    /** Privileged view, used only to arrange fixtures. Superusers bypass RLS. */
-    @Autowired
-    private JdbcTemplate asOwner;
-
     @BeforeEach
     void setUp() {
         if (pool == null) {
@@ -57,7 +53,7 @@ class TenantIsolationTest extends PostgresIntegrationTest {
             asApplication = new JdbcTemplate(tenantAware);
         }
 
-        asOwner.execute("truncate table collection, app_user, tenant cascade");
+        asOwner().execute("truncate table collection, app_user, tenant cascade");
         insertTenant(ACME_ID, "acme", "Acme Corp");
         insertTenant(GLOBEX_ID, "globex", "Globex");
         insertCollection(ACME_ID, "Acme handbook");
@@ -138,10 +134,10 @@ class TenantIsolationTest extends PostgresIntegrationTest {
     }
 
     private void insertTenant(UUID id, String slug, String name) {
-        asOwner.update("insert into tenant (id, slug, name) values (?, ?, ?)", id, slug, name);
+        asOwner().update("insert into tenant (id, slug, name) values (?, ?, ?)", id, slug, name);
     }
 
     private void insertCollection(UUID tenantId, String name) {
-        asOwner.update("insert into collection (tenant_id, name) values (?, ?)", tenantId, name);
+        asOwner().update("insert into collection (tenant_id, name) values (?, ?)", tenantId, name);
     }
 }

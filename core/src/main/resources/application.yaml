@@ -15,6 +15,12 @@ spring:
     user: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
 
+  mvc:
+    problemdetails:
+      # Errors are reported as RFC 7807 problem documents, including the ones
+      # Spring raises before our own handlers see them.
+      enabled: true
+
   jpa:
     open-in-view: false
     hibernate:
@@ -29,6 +35,15 @@ glosa:
       secret: ${GLOSA_JWT_SECRET}
       issuer: glosa
       access-token-ttl: PT1H
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    # Endpoints grouped the way the API reads, not alphabetically by class.
+    tags-sorter: alpha
+    operations-sorter: method
 
 management:
   endpoints:

@@ -1,6 +1,8 @@
 package dev.glosa.core.support;
 
 import java.nio.file.Path;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -55,12 +57,36 @@ public abstract class PostgresIntegrationTest {
         POSTGRES.start();
     }
 
+    private static JdbcTemplate owner;
+
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        // The application connects as the unprivileged role, exactly as it does
+        // in a deployment. This is not a detail: the owner role is a superuser
+        // and superusers bypass Row Level Security, so a context wired to it
+        // would let every isolation assertion pass for the wrong reason.
+        registry.add("spring.datasource.username", () -> APP_USERNAME);
+        registry.add("spring.datasource.password", () -> APP_PASSWORD);
         registry.add("spring.flyway.user", POSTGRES::getUsername);
         registry.add("spring.flyway.password", POSTGRES::getPassword);
+    }
+
+    /**
+     * Privileged access, for arranging fixtures only.
+     *
+     * <p>Built straight from the container rather than taken from the application
+     * context, which is deliberately unprivileged. Because this role bypasses Row
+     * Level Security it can seed rows across several tenants, which is what the
+     * isolation tests need in order to have something to fail against.
+     */
+    protected static synchronized JdbcTemplate asOwner() {
+        if (owner == null) {
+            DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                    POSTGRES.getJdbcUrl(), OWNER_USERNAME, OWNER_PASSWORD);
+            dataSource.setDriverClassName("org.postgresql.Driver");
+            owner = new JdbcTemplate(dataSource);
+        }
+        return owner;
     }
 }
