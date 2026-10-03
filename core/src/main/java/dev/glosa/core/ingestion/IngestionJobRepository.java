@@ -1,5 +1,6 @@
 package dev.glosa.core.ingestion;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -31,4 +32,16 @@ public interface IngestionJobRepository extends JpaRepository<IngestionJob, UUID
             limit :limit
             """, nativeQuery = true)
     List<UUID> lockDueJobIds(@Param("limit") int limit);
+
+    /**
+     * Jobs left RUNNING by a worker that stopped responding.
+     *
+     * <p>updated_at is set by a trigger whenever the row changes, so it is the
+     * moment the job was claimed.
+     */
+    List<IngestionJob> findByStateAndUpdatedAtBefore(IngestionState state, Instant cutoff);
+
+    default List<IngestionJob> findStaleRunningJobs(Instant cutoff) {
+        return findByStateAndUpdatedAtBefore(IngestionState.RUNNING, cutoff);
+    }
 }
