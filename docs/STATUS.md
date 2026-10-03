@@ -4,7 +4,7 @@ Project memory. Read it before starting work and when resuming a session after a
 context compaction. Update it when closing a phase and when taking an
 architectural decision.
 
-Last updated: 2026-10-01
+Last updated: 2026-10-03
 
 ## Current phase
 
@@ -24,7 +24,7 @@ Done:
 - Access tokens: signing configuration, issuer, role enum. Verified by unit
   tests covering expiry, a wrong secret and a foreign issuer.
 
-The suite is green: 12 tests.
+The suite is green: 52 tests, in CI as well as locally.
 
 Next, in order:
 
@@ -65,6 +65,8 @@ Next, in order:
 | `tenant` table excluded from Row Level Security | Login has to resolve a tenant from its slug before any tenant context can exist. The table holds no customer data and is never exposed as a listing | Applying a policy to it too: creates a chicken-and-egg problem at login |
 | Test configuration lives in `application-test.yaml` under a `test` profile | A file named `application.yaml` in test resources shadows the main one instead of layering on it, silently dropping every setting it does not repeat | Overriding in a test-scoped `application.yaml`: cost an hour to diagnose once |
 | Isolation tests assert on SQLSTATE 42501, not on the error text | The wording of a Postgres message is not a contract; the SQLSTATE is | Matching the message only: broke as soon as Spring wrapped the driver exception |
+| The ingestion worker visits tenants one at a time instead of being granted cross-tenant access | Row Level Security hides the queue from an unbound worker, which is correct. Binding each tenant in turn keeps the invariant that no statement the application makes can see across the boundary | A `BYPASSRLS` role, which would void the project's central claim; a `SECURITY DEFINER` function, which `FORCE ROW LEVEL SECURITY` defeats anyway. Cost is a query per tenant per sweep; past a few hundred tenants, keep a small unscoped table of which tenants have work |
+| A claim commits `RUNNING` before the work starts, and a reaper returns abandoned jobs | Committing first is what stops a second worker taking the row, since the `SKIP LOCKED` lock ends with the transaction. The price is that a crashed worker leaves the row owned by nobody, which the reaper undoes | One transaction around claim and work: a failure would roll back the attempt counter too, so the job would retry forever without backing off |
 | Testcontainers mounts the real provisioning script | The isolation tests then exercise the same roles, grants and default privileges as production, instead of a test-only approximation | Creating the role inline in test setup: would prove less and could drift from the script |
 
 ## Out of scope for the first version
@@ -82,3 +84,14 @@ improvements.
   provisioning script only runs on an empty data directory, so changing
   `APP_DB_USER` or `APP_DB_PASSWORD` later needs the volume removed
   (`docker compose down -v`).
+
+## Known rough edges
+
+- `updated_at` is maintained both by a database trigger and by Hibernate's
+  `@UpdateTimestamp`. The trigger wins, so behaviour is correct, but there are
+  two mechanisms where one would do. Worth collapsing onto `@Generated` so the
+  database is the single source of truth and the entity still reads back fresh.
+- Chunks carry no embedding yet. Keyword retrieval works on them already; the
+  vector half arrives with the rag service.
+- PDF uploads are accepted but nothing can read them yet, so they will exhaust
+  their retries and fail. The PDF extractor is the next piece.

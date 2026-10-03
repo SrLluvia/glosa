@@ -37,6 +37,16 @@ spring:
       hibernate.jdbc.time_zone: UTC
 
 glosa:
+  ingestion:
+    enabled: true
+    # Short enough that an upload feels like it is being worked on, long enough
+    # that an idle queue is not hammered.
+    poll-interval: PT2S
+    batch-size: 10
+    # A job claimed but untouched for this long is assumed abandoned by a worker
+    # that died, and is returned to the queue.
+    stale-after: PT5M
+
   security:
     jwt:
       secret: ${GLOSA_JWT_SECRET}
