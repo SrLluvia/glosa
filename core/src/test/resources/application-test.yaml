@@ -5,6 +5,11 @@
 # The datasource and migration credentials are supplied dynamically by the
 # Testcontainers base class.
 glosa:
+  ingestion:
+    # Tests drive the pipeline step by step rather than racing a timer, so the
+    # scheduled worker stays off and the service is called directly.
+    enabled: false
+
   security:
     jwt:
       secret: test-only-signing-secret-not-used-anywhere-else

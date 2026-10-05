@@ -78,6 +78,19 @@ public class IngestionJob {
         this.attempts = attempts + 1;
     }
 
+    /**
+     * Returns an abandoned job to the queue.
+     *
+     * <p>The attempt already counted against it stays counted: a worker that
+     * died may well have died because of this document, and resetting the count
+     * would let it take the whole queue down over and over.
+     */
+    void requeue() {
+        this.state = IngestionState.QUEUED;
+        this.runAfter = Instant.now();
+        this.lastError = "Requeued after the worker handling it stopped responding";
+    }
+
     void markSucceeded() {
         this.state = IngestionState.SUCCEEDED;
         this.lastError = null;
