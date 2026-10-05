@@ -4,7 +4,7 @@ Project memory. Read it before starting work and when resuming a session after a
 context compaction. Update it when closing a phase and when taking an
 architectural decision.
 
-Last updated: 2026-10-03
+Last updated: 2026-10-05
 
 ## Current phase
 
@@ -24,7 +24,7 @@ Done:
 - Access tokens: signing configuration, issuer, role enum. Verified by unit
   tests covering expiry, a wrong secret and a foreign issuer.
 
-The suite is green: 52 tests, in CI as well as locally.
+The suite is green: 69 tests, in CI as well as locally.
 
 Next, in order:
 
@@ -36,6 +36,9 @@ Next, in order:
 2. Collections and documents API, with upload and content hashing.
 3. Ingestion worker claiming jobs with `FOR UPDATE SKIP LOCKED`.
 4. The `rag` service: chunking and embeddings over the two demo corpora.
+
+Phase 1 is complete end to end: register, sign in, create a collection, upload a
+document, watch it be ingested, and search the passages it produced.
 
 ## Phase plan
 
@@ -95,3 +98,7 @@ improvements.
   vector half arrives with the rag service.
 - PDF uploads are accepted but nothing can read them yet, so they will exhaust
   their retries and fail. The PDF extractor is the next piece.
+- Registration is open to anyone. That suits a demo; a deployment would put an
+  invite or a payment in front of it.
+- Access tokens cannot be revoked before they expire, and there are no refresh
+  tokens. A one-hour lifetime keeps the blast radius small.
