@@ -43,6 +43,11 @@ class SecurityConfiguration {
                 .authorizeHttpRequests(requests -> requests
                         // Login cannot require a token, by definition.
                         .requestMatchers(HttpMethod.POST, "/v1/auth/login").permitAll()
+                        // Registration creates the first tenant and its first
+                        // administrator, so there is nothing to authenticate as
+                        // yet. Open registration suits a demo; a deployment
+                        // would put an invite or a payment in front of it.
+                        .requestMatchers(HttpMethod.POST, "/v1/tenants").permitAll()
                         // Liveness for the container orchestrator. Detail is off
                         // in configuration, so this leaks nothing about the
                         // database or its topology.

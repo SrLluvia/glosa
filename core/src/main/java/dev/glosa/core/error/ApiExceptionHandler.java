@@ -1,5 +1,6 @@
 package dev.glosa.core.error;
 
+import dev.glosa.core.auth.InvalidCredentialsException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -30,6 +31,13 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(UnsupportedDocumentException.class)
     ProblemDetail handleUnsupportedDocument(UnsupportedDocumentException e) {
         return problem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported document", e.getMessage());
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    ProblemDetail handleInvalidCredentials(InvalidCredentialsException e) {
+        // Deliberately the same answer whatever was wrong with the attempt.
+        return problem(HttpStatus.UNAUTHORIZED, "Invalid credentials",
+                "The organisation, email or password did not match");
     }
 
     private static ProblemDetail problem(HttpStatus status, String title, String detail) {
