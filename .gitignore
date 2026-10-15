@@ -39,3 +39,5 @@ Thumbs.db
 
 # Local development token, never committed
 dev-token.txt
+dev-collection.txt
+dev-globex-collection.txt
