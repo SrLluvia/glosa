@@ -9,6 +9,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import dev.glosa.core.auth.AccessTokenIssuer;
 import dev.glosa.core.auth.Role;
 import dev.glosa.core.support.PostgresIntegrationTest;
+import dev.glosa.core.support.TestPdfs;
+import dev.glosa.core.ingestion.IngestionService;
+import dev.glosa.core.tenant.TenantContext;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +40,9 @@ class DocumentApiTest extends PostgresIntegrationTest {
 
     @Autowired
     private AccessTokenIssuer issuer;
+
+    @Autowired
+    private IngestionService ingestion;
 
     @BeforeEach
     void seed() {
@@ -154,6 +160,37 @@ class DocumentApiTest extends PostgresIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalItems").value(1))
                 .andExpect(jsonPath("$.items[0].filename").value("one.md"));
+    }
+
+    @Test
+    @DisplayName("a PDF is ingested and its passages carry the page they came from")
+    void ingestsAPdfWithPageNumbers() throws Exception {
+        MockMultipartFile pdf = new MockMultipartFile("file", "handbook.pdf", "application/pdf",
+                TestPdfs.withPages(
+                        "Holiday allowance. Everyone receives twenty-three days of paid leave.",
+                        "Expense claims. Submit expenses before the fifth of the following month."));
+
+        String location = mockMvc.perform(multipart("/v1/collections/{id}/documents", ACME_COLLECTION)
+                        .file(pdf)
+                        .header("Authorization", bearer(ACME, Role.EDITOR)))
+                .andExpect(status().isAccepted())
+                .andReturn().getResponse().getHeader("Location");
+        String documentId = location.replace("/v1/documents/", "");
+
+        TenantContext.runWith(ACME, () -> ingestion.claimDueJobs(10).forEach(ingestion::runJob));
+
+        mockMvc.perform(get("/v1/documents/{id}", documentId)
+                        .header("Authorization", bearer(ACME, Role.VIEWER)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("READY"))
+                .andExpect(jsonPath("$.pageCount").value(2));
+
+        // The page number is what makes a citation from a PDF checkable.
+        org.assertj.core.api.Assertions.assertThat(asOwner().queryForList(
+                        "select page_number from chunk where document_id = ?::uuid order by ordinal",
+                        Integer.class, documentId))
+                .isNotEmpty()
+                .doesNotContainNull();
     }
 
     private static MockMultipartFile markdown(String filename, String body) {
