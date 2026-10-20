@@ -1,12 +1,15 @@
 package dev.glosa.core.ingestion;
 
 import dev.glosa.core.chunk.Chunk;
+import dev.glosa.core.chunk.ChunkEmbeddingWriter;
 import dev.glosa.core.chunk.ChunkRepository;
 import dev.glosa.core.document.Document;
 import dev.glosa.core.document.DocumentContent;
 import dev.glosa.core.document.DocumentContentRepository;
 import dev.glosa.core.document.DocumentRepository;
 import dev.glosa.core.document.DocumentStatus;
+import dev.glosa.core.rag.EmbeddingClient;
+import dev.glosa.core.rag.EmbeddingUnavailableException;
 import dev.glosa.core.tenant.TenantContext;
 import java.time.Clock;
 import java.time.Duration;
@@ -38,16 +41,21 @@ public class IngestionService {
     private final DocumentContentRepository contents;
     private final ChunkRepository chunks;
     private final List<DocumentExtractor> extractors;
+    private final EmbeddingClient embeddings;
+    private final ChunkEmbeddingWriter embeddingWriter;
     private final Clock clock;
 
     public IngestionService(IngestionJobRepository jobs, DocumentRepository documents,
             DocumentContentRepository contents, ChunkRepository chunks,
-            List<DocumentExtractor> extractors, Clock clock) {
+            List<DocumentExtractor> extractors, EmbeddingClient embeddings,
+            ChunkEmbeddingWriter embeddingWriter, Clock clock) {
         this.jobs = jobs;
         this.documents = documents;
         this.contents = contents;
         this.chunks = chunks;
         this.extractors = extractors;
+        this.embeddings = embeddings;
+        this.embeddingWriter = embeddingWriter;
         this.clock = clock;
     }
 
@@ -93,6 +101,10 @@ public class IngestionService {
             job.markSucceeded();
         } catch (ExtractionException e) {
             fail(job, e.getMessage(), e);
+        } catch (EmbeddingUnavailableException e) {
+            // Nothing is wrong with the document, so this is worth retrying
+            // rather than holding against it.
+            fail(job, "Embeddings are not available yet", e);
         } catch (RuntimeException e) {
             // Anything unexpected is still this job's failure; it must not escape
             // and take the polling loop down with it.
@@ -131,14 +143,29 @@ public class IngestionService {
             extracted.add(new Chunk(tenantId, document.getId(), ordinal, chunk.pageNumber(),
                     chunk.heading(), chunk.content(), chunk.tokenCount()));
         }
-        chunks.saveAll(extracted);
+        List<Chunk> saved = chunks.saveAll(extracted);
+
+        document.moveTo(DocumentStatus.EMBEDDING);
+        embed(saved);
 
         document.recordPageCount(result.pageCount());
-        // Text is stored and searchable by keyword. Embeddings are a separate
-        // step, so the document is READY for keyword retrieval already.
         document.moveTo(DocumentStatus.READY);
 
-        log.info("Ingested document {} into {} chunks", document.getId(), extracted.size());
+        log.info("Ingested document {} into {} chunks", document.getId(), saved.size());
+    }
+
+    /**
+     * Attaches a vector to every passage.
+     *
+     * <p>Part of the same transaction as the passages themselves. A document
+     * whose chunks were stored but never embedded would be found by keyword
+     * search and missed by semantic search, which is worse than not being
+     * indexed at all: the gap would be invisible.
+     */
+    private void embed(List<Chunk> saved) {
+        List<String> texts = saved.stream().map(Chunk::getContent).toList();
+        List<float[]> vectors = embeddings.embed(texts);
+        embeddingWriter.write(saved.stream().map(Chunk::getId).toList(), vectors);
     }
 
     private void fail(IngestionJob job, String reason, Exception cause) {
