@@ -37,7 +37,13 @@ public class HybridSearchService {
      * a passage ranked first by one half and twentieth by the other should not
      * automatically beat one ranked third by both.
      */
-    private static final int FUSION_CONSTANT = 60;
+    private final int fusionConstant;
+
+    /**
+     * Weight of the semantic half. Fixed at one; the keyword half is expressed
+     * relative to it, so there is only one number to reason about.
+     */
+    private static final double SEMANTIC_WEIGHT = 1.0;
 
     /**
      * How deep each half goes before fusion. Wider than the result set, because
@@ -55,34 +61,54 @@ public class HybridSearchService {
      * still have let another tenant's text influence which passages surfaced,
      * even though none of it was returned.
      */
+    /**
+     * Keyword matching requires only <em>some</em> of the query's terms.
+     *
+     * <p>{@code websearch_to_tsquery} joins terms with AND, which suits a search
+     * box and is useless for a question: "how many days of paid leave does
+     * everyone get" matches nothing, because no single passage contains every
+     * one of those words. Measured on the evaluation set, the keyword half
+     * found the right passage for 17% of questions and for none of the
+     * paraphrased ones, which meant hybrid search was quietly just semantic
+     * search.
+     *
+     * <p>Rewriting the operator to OR keeps quoted phrases and negations intact,
+     * because those are expressed with different operators, and lets ranking do
+     * the work of sorting many weak matches instead of a filter throwing them
+     * all away. The function itself is defined in a migration.
+     */
     private static final String HYBRID_SQL = """
             with keyword as (
                 select c.id,
                        row_number() over (
-                           order by ts_rank_cd(c.content_tsv, websearch_to_tsquery('english', ?)) desc,
+                           order by ts_rank_cd(c.content_tsv, any_term(?)) desc,
                                     c.ordinal
                        ) as rank
                 from chunk c
                 join document d on d.id = c.document_id
                 where d.collection_id = ?
-                  and c.content_tsv @@ websearch_to_tsquery('english', ?)
+                  and c.content_tsv @@ any_term(?)
+                  and cast(? as boolean)
                 limit ?
             ),
             semantic as (
                 select c.id,
-                       row_number() over (order by c.embedding <=> cast(? as vector)) as rank
+                       row_number() over (order by c.embedding <=> cast(? as vector)) as rank,
+                       c.embedding <=> cast(? as vector) as distance
                 from chunk c
                 join document d on d.id = c.document_id
                 where d.collection_id = ?
                   and c.embedding is not null
+                  and cast(? as boolean)
                 order by c.embedding <=> cast(? as vector)
                 limit ?
             ),
             fused as (
                 select coalesce(k.id, s.id) as id,
-                       coalesce(1.0 / (? + k.rank), 0) + coalesce(1.0 / (? + s.rank), 0) as score,
+                       coalesce(? / (? + k.rank), 0) + coalesce(? / (? + s.rank), 0) as score,
                        k.rank as keyword_rank,
-                       s.rank as semantic_rank
+                       s.rank as semantic_rank,
+                       s.distance as semantic_distance
                 from keyword k
                 full outer join semantic s on s.id = k.id
             )
@@ -90,6 +116,7 @@ public class HybridSearchService {
                    f.score,
                    f.keyword_rank,
                    f.semantic_rank,
+                   f.semantic_distance,
                    c.document_id,
                    d.filename,
                    c.page_number,
@@ -105,17 +132,30 @@ public class HybridSearchService {
     private final JdbcTemplate jdbc;
     private final DocumentCollectionService collections;
     private final EmbeddingClient embeddings;
+    private final double keywordWeight;
 
     public HybridSearchService(JdbcTemplate jdbc, DocumentCollectionService collections,
-            EmbeddingClient embeddings) {
+            EmbeddingClient embeddings,
+            @org.springframework.beans.factory.annotation.Value("${glosa.search.keyword-weight}")
+            double keywordWeight,
+            @org.springframework.beans.factory.annotation.Value("${glosa.search.fusion-constant}")
+            int fusionConstant) {
         this.jdbc = jdbc;
         this.collections = collections;
         this.embeddings = embeddings;
+        this.keywordWeight = keywordWeight;
+        this.fusionConstant = fusionConstant;
     }
 
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
     @Transactional(readOnly = true)
     public List<RankedPassage> search(UUID collectionId, String query, int limit) {
+        return search(collectionId, query, limit, SearchMode.HYBRID);
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER')")
+    @Transactional(readOnly = true)
+    public List<RankedPassage> search(UUID collectionId, String query, int limit, SearchMode mode) {
         // Reuses the collection lookup, so another tenant's collection answers
         // "not found" here exactly as it does everywhere else.
         collections.get(collectionId);
@@ -132,10 +172,12 @@ public class HybridSearchService {
                         rs.getString("content"),
                         rs.getDouble("score"),
                         rankOf(rs.getObject("keyword_rank")),
-                        rankOf(rs.getObject("semantic_rank"))),
-                query, collectionId, query, CANDIDATES_PER_HALF,
-                queryVector, collectionId, queryVector, CANDIDATES_PER_HALF,
-                FUSION_CONSTANT, FUSION_CONSTANT,
+                        rankOf(rs.getObject("semantic_rank")),
+                        (Double) rs.getObject("semantic_distance")),
+                query, collectionId, query, mode.usesKeyword(), CANDIDATES_PER_HALF,
+                queryVector, queryVector, collectionId, mode.usesSemantic(), queryVector,
+                CANDIDATES_PER_HALF,
+                keywordWeight, fusionConstant, SEMANTIC_WEIGHT, fusionConstant,
                 limit);
     }
 
@@ -164,6 +206,12 @@ public class HybridSearchService {
      * @param keywordRank  position in the keyword half, or null if it was not
      *                     found there at all
      * @param semanticRank position in the vector half, or null likewise
+     * @param semanticDistance cosine distance from the query, where 0 is
+     *                         identical and larger is less alike. Null when the
+     *                         passage came only from the keyword half. This is
+     *                         the only signal of whether a result is actually
+     *                         relevant, as opposed to merely the closest thing
+     *                         present
      */
     public record RankedPassage(
             UUID chunkId,
@@ -174,6 +222,7 @@ public class HybridSearchService {
             String content,
             double score,
             Integer keywordRank,
-            Integer semanticRank) {
+            Integer semanticRank,
+            Double semanticDistance) {
     }
 }

@@ -47,12 +47,34 @@ class AskController {
 
     private static final long STREAM_TIMEOUT_MILLIS = 300_000L;
 
+    /**
+     * Beyond this cosine distance a passage is not worth answering from.
+     *
+     * <p>Vector search returns the nearest passages however far away they are,
+     * and nearest is not relevant: with nothing about pensions in a collection,
+     * the holiday policy is the closest match to a question about pensions.
+     *
+     * <p>Calibrated rather than guessed. On the evaluation set the furthest
+     * passage that did answer its question sat at 0.507, so the line is drawn
+     * just above it: everything that genuinely answered still gets through.
+     * <p>The two populations overlap, so this alone cannot catch every
+     * unanswerable question, and the prompt carries the rest of that load.
+     *
+     * <p>Configurable because the scale belongs to the embedding model: a
+     * different model puts the same two texts at a different distance, and the
+     * number would have to be measured again.
+     */
+    private final double maxUsefulDistance;
+
     private final HybridSearchService search;
     private final AnswerClient answers;
 
-    AskController(HybridSearchService search, AnswerClient answers) {
+    AskController(HybridSearchService search, AnswerClient answers,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${glosa.search.max-useful-distance}") double maxUsefulDistance) {
         this.search = search;
         this.answers = answers;
+        this.maxUsefulDistance = maxUsefulDistance;
     }
 
     @Schema(name = "Citation", description = "A passage the answer was built from")
@@ -91,7 +113,11 @@ class AskController {
 
         SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MILLIS);
 
-        if (retrieved.isEmpty()) {
+        List<HybridSearchService.RankedPassage> relevant = retrieved.stream()
+                .filter(this::isCloseEnough)
+                .toList();
+
+        if (relevant.isEmpty()) {
             // Nothing retrieved means nothing to ground an answer in, and asking
             // the model anyway is precisely how a system starts inventing.
             send(emitter, "citations", List.of());
@@ -101,13 +127,13 @@ class AskController {
             return emitter;
         }
 
-        send(emitter, "citations", toCitations(retrieved));
+        send(emitter, "citations", toCitations(relevant));
 
         // Off the request thread, so the container is not held for the length of
         // a generation that can run into minutes.
         Thread.ofVirtual().name("answer-" + collectionId).start(() -> {
             try {
-                answers.streamAnswer(q, retrieved.stream()
+                answers.streamAnswer(q, relevant.stream()
                         .map(HybridSearchService.RankedPassage::content)
                         .toList(), token -> send(emitter, "token", token));
                 send(emitter, "done", "");
@@ -126,6 +152,19 @@ class AskController {
         });
 
         return emitter;
+    }
+
+    /**
+     * Whether a passage is near enough to be worth citing.
+     *
+     * <p>A passage found only by keyword search has no distance. It is kept:
+     * matching the words of the question is its own evidence of relevance, and
+     * discarding it would throw away the half of retrieval that handles exact
+     * identifiers.
+     */
+    private boolean isCloseEnough(HybridSearchService.RankedPassage passage) {
+        return passage.semanticDistance() == null
+                || passage.semanticDistance() <= maxUsefulDistance;
     }
 
     private static List<Citation> toCitations(List<HybridSearchService.RankedPassage> passages) {

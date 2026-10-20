@@ -45,12 +45,15 @@ class SearchController {
             @Schema(description = "Position in the keyword half, or null if it did not match there")
             Integer keywordRank,
             @Schema(description = "Position in the vector half, or null if it did not match there")
-            Integer semanticRank) {
+            Integer semanticRank,
+            @Schema(description = "Cosine distance from the question: 0 is identical, larger is "
+                    + "less alike. Null when the passage came only from the keyword half.")
+            Double semanticDistance) {
 
         static PassageResponse from(HybridSearchService.RankedPassage passage) {
             return new PassageResponse(passage.chunkId(), passage.documentId(), passage.filename(),
                     passage.pageNumber(), passage.heading(), passage.content(), passage.score(),
-                    passage.keywordRank(), passage.semanticRank());
+                    passage.keywordRank(), passage.semanticRank(), passage.semanticDistance());
         }
     }
 
@@ -72,9 +75,12 @@ class SearchController {
             @Parameter(description = "What to look for. Quoted phrases work, as in a search engine.",
                     example = "holiday allowance")
             @RequestParam @NotBlank @Size(max = 500) String q,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(MAX_RESULTS) int limit) {
+            @RequestParam(defaultValue = "10") @Min(1) @Max(MAX_RESULTS) int limit,
+            @Parameter(description = "Which halves of retrieval to use. HYBRID unless you are "
+                    + "comparing them.")
+            @RequestParam(defaultValue = "HYBRID") SearchMode mode) {
 
-        List<PassageResponse> passages = service.search(collectionId, q, limit).stream()
+        List<PassageResponse> passages = service.search(collectionId, q, limit, mode).stream()
                 .map(PassageResponse::from)
                 .toList();
 

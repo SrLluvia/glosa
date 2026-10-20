@@ -4,10 +4,13 @@ Multi-tenant retrieval over your own documents. An organisation uploads its
 documentation, its people ask questions in plain language, and every answer is
 built only from those documents and cited back to the page it came from.
 
-> **Status: in progress.** The security foundation and the collections API are
-> done and tested. Document upload, ingestion and retrieval are next. See
-> [docs/STATUS.md](docs/STATUS.md) for where things stand and why each decision
-> was made.
+**[How to run it and what to try](docs/USING.md)** · **[What the evaluation
+found](docs/EVALUATION.md)** · **[Decisions and why](docs/STATUS.md)**
+
+Upload a PDF or a Markdown file, wait a few seconds while it is read and
+indexed, then ask a question. The answer streams back with the passages it was
+built from, each pointing at the page or section it came from, so you can check
+it rather than trust it.
 
 ## Why it is built this way
 
@@ -65,16 +68,23 @@ ranking.
 | Component | Stack | Responsibility |
 |---|---|---|
 | `core/` | Java 25, Spring Boot 4 | Auth and roles, tenants with RLS, documents, ingestion queue, REST API |
-| `rag/` | Python, FastAPI | Chunking, embeddings, hybrid retrieval, grounded generation |
-| `web/` | React | Streaming chat with citations, document upload |
+| `rag/` | Python, FastAPI | Embeddings and grounded generation, through a local model |
+| `web/` | React, TypeScript | Streaming chat with citations, document upload |
+| `eval/` | Python | Measures retrieval and grounding against the running stack |
 
 ## Design decisions worth a word
 
-**Hybrid retrieval, not vector-only.** Semantic search alone is weak on acronyms,
-product names and version numbers, which is most of what people actually search
-technical documentation for. Vector similarity (pgvector, HNSW, cosine) and
-keyword search (`tsvector`, GIN) run against the same tables and are merged with
-Reciprocal Rank Fusion. Phase 3 measures the difference rather than assuming it.
+**Hybrid retrieval — and the measurement that says it is not winning.** Vector
+similarity (pgvector, HNSW, cosine) and keyword search (`tsvector`, GIN) run
+against the same tables and are merged by rank with Reciprocal Rank Fusion,
+because the two scores are not comparable and weighing them directly means
+inventing a conversion.
+
+On this corpus hybrid does **not** beat semantic alone: 0.91 against 0.93 at
+rank 1. That is in [the evaluation](docs/EVALUATION.md) rather than quietly
+omitted, along with the two defects measuring it exposed — keyword search was
+contributing nothing at all, and the fusion weight was not the lever it looked
+like.
 
 **The ingestion queue is a database table.** Workers claim jobs with
 `SELECT ... FOR UPDATE SKIP LOCKED`, which gives at-most-one-worker-per-row
@@ -86,10 +96,14 @@ have been one more thing to operate for no gain at this size.
 a local model through Ollama at no cost; evaluation runs against a hosted one.
 Neither choice leaks into the rest of the code.
 
-**Answers must be refusable.** A retrieval system that invents an answer when the
-corpus does not contain one is worse than useless, so "I don't know" is a correct
-outcome and phase 3 measures how often the answer is actually grounded in the
-cited text.
+**Answers must be refusable, and at first this one was not.** Refusal
+correctness measured zero: every question the documents did not cover was
+answered anyway, confidently, citing passages about something else. The cause
+was structural rather than a weak model — vector search returns its nearest
+neighbours however far away they are, so the generator never saw an empty result
+and never had the chance to decline. Relevance is now decided in its own call,
+before any answer is written, and a calibrated distance threshold drops passages
+too far from the question to cite.
 
 ## Running it
 

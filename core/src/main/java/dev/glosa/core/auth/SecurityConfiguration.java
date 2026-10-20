@@ -59,6 +59,10 @@ class SecurityConfiguration {
                         // springdoc.swagger-ui.enabled=false.
                         .requestMatchers(HttpMethod.GET, "/v3/api-docs", "/v3/api-docs/**",
                                 "/swagger-ui.html", "/swagger-ui/**").permitAll()
+                        // The built frontend. Static assets with no data in
+                        // them; every call the app makes still carries a token.
+                        .requestMatchers(HttpMethod.GET, "/", "/index.html", "/assets/**",
+                                "/favicon.ico", "/vite.svg").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .jwt(jwt -> jwt

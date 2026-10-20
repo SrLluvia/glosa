@@ -44,3 +44,6 @@ dev-globex-collection.txt
 
 # Python virtualenv in the rag service
 rag/.venv/
+
+# Frontend build output, served by the core service
+core/src/main/resources/static/

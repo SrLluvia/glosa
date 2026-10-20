@@ -37,6 +37,31 @@ spring:
       hibernate.jdbc.time_zone: UTC
 
 glosa:
+  search:
+    # How much the keyword half counts for against the semantic half, which is
+    # fixed at one. Reciprocal Rank Fusion assumes the rankers it merges are of
+    # comparable quality; when one is clearly weaker, merging them as equals
+    # drags the better one down. The evaluation suite measures both halves
+    # separately, and this is where that measurement is acted on. It is
+    # configuration rather than a constant because the right value depends on
+    # the corpus: prose favours the semantic half, while a corpus full of error
+    # codes and version numbers favours the keyword one.
+    keyword-weight: 0.2
+    # Cosine distance beyond which a passage is not worth answering from.
+    # Vector search returns the nearest passages however far away they are, and
+    # nearest is not relevant. Calibrated against the evaluation set, where the
+    # furthest passage that genuinely answered its question sat at 0.507.
+    # Belongs to the embedding model: change the model and measure it again.
+    max-useful-distance: 0.52
+    # The k in 1/(k + rank). The familiar value of 60 comes from fusing many
+    # rankers of comparable quality over a large corpus, and it deliberately
+    # flattens the difference between adjacent positions. That flattening is
+    # wrong here: at k=60 the gap between rank 1 and rank 2 is about 0.0003,
+    # while merely appearing in the other list is worth around 0.005, so
+    # presence in both lists beats being first in the better one almost
+    # regardless of weight. A smaller k restores the meaning of position.
+    fusion-constant: 10
+
   rag:
     base-url: ${RAG_URL:http://localhost:8000}
     # Generous: a cold model is loaded on the first call, and a small machine
