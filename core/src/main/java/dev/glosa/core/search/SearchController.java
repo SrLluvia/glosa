@@ -72,9 +72,12 @@ class SearchController {
             @Parameter(description = "What to look for. Quoted phrases work, as in a search engine.",
                     example = "holiday allowance")
             @RequestParam @NotBlank @Size(max = 500) String q,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(MAX_RESULTS) int limit) {
+            @RequestParam(defaultValue = "10") @Min(1) @Max(MAX_RESULTS) int limit,
+            @Parameter(description = "Which halves of retrieval to use. HYBRID unless you are "
+                    + "comparing them.")
+            @RequestParam(defaultValue = "HYBRID") SearchMode mode) {
 
-        List<PassageResponse> passages = service.search(collectionId, q, limit).stream()
+        List<PassageResponse> passages = service.search(collectionId, q, limit, mode).stream()
                 .map(PassageResponse::from)
                 .toList();
 
