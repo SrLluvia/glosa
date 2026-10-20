@@ -25,9 +25,9 @@ class SearchController {
 
     private static final int MAX_RESULTS = 50;
 
-    private final SearchService service;
+    private final HybridSearchService service;
 
-    SearchController(SearchService service) {
+    SearchController(HybridSearchService service) {
         this.service = service;
     }
 
@@ -41,11 +41,16 @@ class SearchController {
             @Schema(description = "Nearest enclosing heading") String heading,
             String content,
             @Schema(description = "Relative within this result set only")
-            double score) {
+            double score,
+            @Schema(description = "Position in the keyword half, or null if it did not match there")
+            Integer keywordRank,
+            @Schema(description = "Position in the vector half, or null if it did not match there")
+            Integer semanticRank) {
 
-        static PassageResponse from(SearchService.Passage passage) {
+        static PassageResponse from(HybridSearchService.RankedPassage passage) {
             return new PassageResponse(passage.chunkId(), passage.documentId(), passage.filename(),
-                    passage.pageNumber(), passage.heading(), passage.content(), passage.score());
+                    passage.pageNumber(), passage.heading(), passage.content(), passage.score(),
+                    passage.keywordRank(), passage.semanticRank());
         }
     }
 
@@ -55,9 +60,11 @@ class SearchController {
 
     @GetMapping("/search")
     @Operation(summary = "Search the passages of a collection",
-            description = "Keyword search for now; vector similarity joins it once embeddings "
-                    + "exist, and the two will be merged. Results carry the document and heading "
-                    + "they came from, so an answer built on them can be checked.")
+            description = "Keyword and vector search run together and are merged by rank, so a "
+                    + "passage is found whether it uses the words asked about or merely means "
+                    + "the same thing. Each result reports where each half ranked it, and "
+                    + "carries the document, page and heading it came from so an answer built "
+                    + "on it can be checked.")
     @ApiResponse(responseCode = "404", description = "No such collection in the caller's tenant",
             content = @Content)
     SearchResponse search(

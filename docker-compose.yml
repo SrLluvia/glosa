@@ -36,6 +36,20 @@ services:
       - ollama-models:/root/.ollama
     restart: unless-stopped
 
+  rag:
+    build: ./rag
+    container_name: glosa-rag
+    environment:
+      # Reached by service name on the compose network, not through the host.
+      GLOSA_RAG_OLLAMA_URL: http://ollama:11434
+      GLOSA_RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL}
+      GLOSA_RAG_CHAT_MODEL: ${RAG_CHAT_MODEL}
+    ports:
+      - "${RAG_PORT}:8000"
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   ollama-models:

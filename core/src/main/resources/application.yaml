@@ -37,6 +37,14 @@ spring:
       hibernate.jdbc.time_zone: UTC
 
 glosa:
+  rag:
+    base-url: ${RAG_URL:http://localhost:8000}
+    # Generous: a cold model is loaded on the first call, and a small machine
+    # can take a while over it.
+    timeout: PT180S
+    # Matches what the rag service accepts in one request.
+    batch-size: 64
+
   ingestion:
     enabled: true
     # Short enough that an upload feels like it is being worked on, long enough

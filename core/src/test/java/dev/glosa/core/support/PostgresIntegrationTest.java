@@ -3,6 +3,7 @@ package dev.glosa.core.support;
 import java.nio.file.Path;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -25,6 +26,9 @@ import org.testcontainers.utility.MountableFile;
  * state the next one tolerates.
  */
 @ActiveProfiles("test")
+// Embeddings and answers come from deterministic stand-ins, so the suite
+// needs no model running.
+@Import({FakeEmbeddingConfiguration.class, FakeAnswerConfiguration.class})
 public abstract class PostgresIntegrationTest {
 
     /** Owner role: holds the schema and is used by Flyway. */
