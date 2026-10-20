@@ -26,8 +26,9 @@ import org.testcontainers.utility.MountableFile;
  * state the next one tolerates.
  */
 @ActiveProfiles("test")
-// Embeddings come from a deterministic stand-in, so the suite needs no model.
-@Import(FakeEmbeddingConfiguration.class)
+// Embeddings and answers come from deterministic stand-ins, so the suite
+// needs no model running.
+@Import({FakeEmbeddingConfiguration.class, FakeAnswerConfiguration.class})
 public abstract class PostgresIntegrationTest {
 
     /** Owner role: holds the schema and is used by Flyway. */
