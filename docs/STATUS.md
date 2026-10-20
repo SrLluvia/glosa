@@ -4,7 +4,7 @@ Project memory. Read it before starting work and when resuming a session after a
 context compaction. Update it when closing a phase and when taking an
 architectural decision.
 
-Last updated: 2026-10-20
+Last updated: 2026-10-20 (phase 3)
 
 ## Current phase
 
@@ -24,7 +24,7 @@ Done:
 - Access tokens: signing configuration, issuer, role enum. Verified by unit
   tests covering expiry, a wrong secret and a foreign issuer.
 
-The suite is green: 84 Java tests and 18 Python tests, in CI as well as locally.
+Green: 86 Java tests, 22 Python tests, 7 evaluation guards.
 
 Next, in order:
 
@@ -103,3 +103,44 @@ improvements.
   invite or a payment in front of it.
 - Access tokens cannot be revoked before they expire, and there are no refresh
   tokens. A one-hour lifetime keeps the blast radius small.
+
+
+## Where phase 3 stands
+
+Done and committed on `feat/evaluation`:
+
+- Evaluation suite (`eval/`) driving the real API, with metrics for retrieval
+  and grounding, and a three-way comparison of retrieval modes.
+- Keyword search fixed to match any term rather than every term.
+- Fusion weight and constant made configurable, and calibrated.
+- Relevance decided in its own model call, plus a distance threshold.
+- React web client (`web/`), built into the core service's static resources.
+- `docs/USING.md`, `docs/EVALUATION.md`, README rewritten.
+- CI runs the dataset and metric guards.
+
+Left to do:
+
+1. **Confirm the relevance gate helped.** The last measurement was still
+   running when work stopped. Run `cd eval && python run_eval.py` with the stack
+   up and compare against the recorded figures: refusal correctness was 0.00
+   before any fix and 0.20 with the combined judge-and-answer prompt, which cost
+   phrase accuracy (0.51 to 0.40). If the gate has not improved on that, the
+   honest next step is a larger chat model rather than more prompt work, and
+   `docs/EVALUATION.md` needs the final numbers either way.
+2. **Push `feat/evaluation` and open a pull request.** Not yet pushed.
+3. **Rebuild the jar after building the web client.** The running jar predates
+   the static resources, so the web client is not served by it yet:
+   `cd web && npm run build` then `cd core && ./mvnw package -DskipTests`.
+4. Observability was deliberately left out of scope.
+
+## Findings worth keeping
+
+- Hybrid retrieval does not beat semantic alone on this corpus (0.91 against
+  0.93 at rank 1). Recorded rather than hidden.
+- Keyword search scored 0.17 because `websearch_to_tsquery` joins terms with
+  AND; a natural-language question matched nothing. Any-term matching took it
+  to 0.81.
+- The RRF constant, not the weight, is the lever. At k=60 adjacent ranks differ
+  by ~0.0003 while appearing in the other list is worth ~0.005.
+- Answerable and unanswerable questions overlap in embedding distance (0.507
+  against 0.442), so a threshold alone cannot separate them.
