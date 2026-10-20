@@ -120,18 +120,15 @@ Done and committed on `feat/evaluation`:
 
 Left to do:
 
-1. **Confirm the relevance gate helped.** The last measurement was still
-   running when work stopped. Run `cd eval && python run_eval.py` with the stack
-   up and compare against the recorded figures: refusal correctness was 0.00
-   before any fix and 0.20 with the combined judge-and-answer prompt, which cost
-   phrase accuracy (0.51 to 0.40). If the gate has not improved on that, the
-   honest next step is a larger chat model rather than more prompt work, and
-   `docs/EVALUATION.md` needs the final numbers either way.
-2. **Push `feat/evaluation` and open a pull request.** Not yet pushed.
-3. **Rebuild the jar after building the web client.** The running jar predates
+1. **Try a larger chat model.** The relevance gate took refusal correctness
+   from 0.00 to 1.00, but phrase accuracy stayed at 0.40 rather than returning
+   to 0.51: the gate declines about five answerable questions out of
+   forty-three. A 3B model is being asked for a judgement near the edge of what
+   it can make. `llama3.1:8b` is the obvious next thing to measure.
+2. **Rebuild the jar after building the web client.** The running jar predates
    the static resources, so the web client is not served by it yet:
    `cd web && npm run build` then `cd core && ./mvnw package -DskipTests`.
-4. Observability was deliberately left out of scope.
+3. Observability was deliberately left out of scope.
 
 ## Findings worth keeping
 

@@ -48,11 +48,24 @@ lever, not the weight.
 
 ## Grounding
 
-| Metric | Before | After |
-|---|---|---|
-| Citation rate | 1.00 | 1.00 |
-| Phrase accuracy | 0.51 | see below |
-| Refusal correctness | **0.00** | see below |
+| Metric | Original | Combined prompt | Separate gate |
+|---|---|---|---|
+| Citation rate | 1.00 | 1.00 | 1.00 |
+| Phrase accuracy | 0.51 | 0.40 | 0.40 |
+| Refusal correctness | **0.00** | 0.20 | **1.00** |
+
+Every unanswerable question is now refused. Phrase accuracy did not come back
+with it, which means the gate is also saying no to questions the passages do
+answer — roughly five of the forty-three. That is a real trade, not a free win:
+the system went from answering everything to declining a little too readily.
+
+Which way to take that depends on what the thing is for. Documentation search
+that occasionally says "not covered" when the answer was there is recoverable —
+the person rephrases. One that confidently cites the holiday policy at a
+question about pensions is not, because nothing signals that it was wrong. So
+the trade is the right way round, and the honest next step is a larger chat
+model rather than further prompt work, since a 3B model is being asked for a
+judgement near the edge of what it can make.
 
 **Refusal correctness started at zero.** Every question the documents did not
 cover was answered anyway, confidently, citing passages about something else.
@@ -70,7 +83,7 @@ passages plainly did answer. Judging and writing are different jobs, and a 3B
 model asked to interleave them does both badly.
 
 Splitting them into two calls — a yes-or-no relevance decision, then the answer
-— is what the code does now.
+— is what the code does now, and it took refusal correctness to 1.00.
 
 A distance threshold helps but cannot do it alone. The distributions overlap:
 the furthest passage that genuinely answered its question sat at 0.507, the
