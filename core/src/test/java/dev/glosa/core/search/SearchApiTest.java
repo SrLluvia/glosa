@@ -123,13 +123,40 @@ class SearchApiTest extends PostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("a query with no matches returns an empty result, not an error")
-    void returnsNothingForAnUnmatchedQuery() throws Exception {
+    @DisplayName("a query with no keyword match still returns passages, found by meaning")
+    void findsPassagesTheKeywordHalfWouldMiss() throws Exception {
+        // Vector search always ranks everything, so there is no such thing as
+        // "no results" once it is in play. That is the point of the second half:
+        // a question phrased in words the document never uses still retrieves.
         mockMvc.perform(get("/v1/collections/{id}/search", ACME_COLLECTION)
                         .param("q", "submarine periscope")
                         .header("Authorization", bearer(ACME, Role.VIEWER)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.count").value(0));
+                .andExpect(jsonPath("$.passages[0].semanticRank").exists());
+    }
+
+    @Test
+    @DisplayName("reports where each half ranked a passage")
+    void reportsTheRankFromEachHalf() throws Exception {
+        mockMvc.perform(get("/v1/collections/{id}/search", ACME_COLLECTION)
+                        .param("q", "holiday leave")
+                        .header("Authorization", bearer(ACME, Role.VIEWER)))
+                .andExpect(status().isOk())
+                // Being able to see which half found a passage is what makes a
+                // disappointing result diagnosable rather than mysterious.
+                .andExpect(jsonPath("$.passages[0].keywordRank").exists())
+                .andExpect(jsonPath("$.passages[0].semanticRank").exists());
+    }
+
+    @Test
+    @DisplayName("every passage carries a vector once ingested")
+    void embedsEveryPassage() {
+        Integer missing = asOwner().queryForObject(
+                "select count(*) from chunk where embedding is null", Integer.class);
+
+        // A passage without a vector is invisible to the semantic half while
+        // still looking indexed, which is the kind of gap nobody notices.
+        org.assertj.core.api.Assertions.assertThat(missing).isZero();
     }
 
     @Test

@@ -144,6 +144,12 @@ public class IngestionService {
                     chunk.heading(), chunk.content(), chunk.tokenCount()));
         }
         List<Chunk> saved = chunks.saveAll(extracted);
+        // Embeddings are written through JDBC, which does not see rows Hibernate
+        // is still holding in its persistence context. Without this flush the
+        // update matches nothing and every passage ends up without a vector,
+        // silently: the document looks indexed and is invisible to the semantic
+        // half of search.
+        chunks.flush();
 
         document.moveTo(DocumentStatus.EMBEDDING);
         embed(saved);
