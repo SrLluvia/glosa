@@ -70,3 +70,23 @@ jobs:
         # Ollama is stubbed, so no model is needed here. Whether a real model
         # answers well is the evaluation suite's job, not this one's.
         run: pytest -q
+
+  eval:
+    name: evaluation (dataset)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # The full suite needs a stack and two models, which is far more than a
+      # pull request should wait for. What runs here is the part that can go
+      # wrong silently: the dataset and the scoring. A question whose expected
+      # heading no longer exists in the corpus would otherwise quietly stop
+      # being measured, and the figures would improve for the wrong reason.
+      - name: Check the dataset and the metrics
+        working-directory: eval
+        run: python -m unittest discover -s . -p "test_*.py" -v

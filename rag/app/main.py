@@ -18,7 +18,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .ollama import ModelUnavailableError, OllamaClient
-from .prompts import SYSTEM_PROMPT, build_user_prompt
+from .prompts import (
+    GATE_SYSTEM_PROMPT,
+    REFUSAL,
+    SYSTEM_PROMPT,
+    build_gate_prompt,
+    build_user_prompt,
+)
 from .settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -107,10 +113,19 @@ async def answer(
     """
     _validate_texts(request.passages, settings)
 
-    prompt = build_user_prompt(request.question, request.passages)
-
     async def tokens() -> AsyncIterator[bytes]:
         try:
+            # Decided before anything is written. A model asked to judge and
+            # answer in one pass does both worse; this call has one job.
+            verdict = await client.decide(
+                GATE_SYSTEM_PROMPT, build_gate_prompt(request.question, request.passages)
+            )
+            if not _is_affirmative(verdict):
+                logger.info("Declined to answer: the passages were judged insufficient")
+                yield REFUSAL.encode("utf-8")
+                return
+
+            prompt = build_user_prompt(request.question, request.passages)
             async for piece in client.stream_chat(SYSTEM_PROMPT, prompt):
                 yield piece.encode("utf-8")
         except ModelUnavailableError as error:
@@ -121,6 +136,16 @@ async def answer(
             yield b"\n\n[The answer could not be completed: the model became unavailable.]"
 
     return StreamingResponse(tokens(), media_type="text/plain; charset=utf-8")
+
+
+def _is_affirmative(verdict: str) -> bool:
+    """Reads the gate's answer.
+
+    Anything that is not recognisably a yes counts as a no. A malformed verdict
+    means the decision was not made, and the safe reading of "I could not tell"
+    is to decline rather than to answer anyway.
+    """
+    return verdict.strip().upper().startswith("YES")
 
 
 def _validate_texts(texts: list[str], settings: Settings) -> None:

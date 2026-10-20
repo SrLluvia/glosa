@@ -12,7 +12,7 @@ import respx
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.prompts import SYSTEM_PROMPT, build_user_prompt
+from app.prompts import GATE_SYSTEM_PROMPT, SYSTEM_PROMPT, build_user_prompt
 from app.settings import get_settings
 
 OLLAMA = "http://localhost:11434"
@@ -115,17 +115,66 @@ class TestEmbedding:
         assert client.post("/v1/embed", json={"texts": []}).status_code == 422
 
 
+class TestRelevanceGate:
+    @respx.mock
+    def test_declines_when_the_passages_do_not_answer(self, client: TestClient) -> None:
+        respx.post(f"{OLLAMA}/api/chat").mock(
+            return_value=httpx.Response(200, json={"message": {"content": "NO"}})
+        )
+
+        response = client.post(
+            "/v1/answer",
+            json={"question": "What is the pension scheme?", "passages": ["Holidays are 23 days."]},
+        )
+
+        # The passage is the nearest one that exists, which is not the same as
+        # being able to answer from it.
+        assert "do not cover" in response.text
+
+    @respx.mock
+    def test_treats_an_unreadable_verdict_as_a_refusal(self, client: TestClient) -> None:
+        respx.post(f"{OLLAMA}/api/chat").mock(
+            return_value=httpx.Response(200, json={"message": {"content": "hmm, perhaps"}})
+        )
+
+        response = client.post(
+            "/v1/answer", json={"question": "Anything?", "passages": ["Something."]}
+        )
+
+        # A verdict nobody can read means the decision was not made, and the
+        # safe reading of "I could not tell" is to decline.
+        assert "do not cover" in response.text
+
+    @respx.mock
+    def test_asks_the_decision_on_its_own(self, client: TestClient) -> None:
+        route = respx.post(f"{OLLAMA}/api/chat").mock(
+            return_value=httpx.Response(200, json={"message": {"content": "NO"}})
+        )
+
+        client.post("/v1/answer", json={"question": "Anything?", "passages": ["Something."]})
+
+        sent = route.calls.last.request.read().decode()
+        # One job per call: the decision prompt carries no instructions about
+        # writing an answer, which is what makes a small model reliable at it.
+        assert "YES or NO" in sent
+        assert "num_predict" in sent
+
+
 class TestAnswering:
     @respx.mock
     def test_streams_the_answer_as_it_arrives(self, client: TestClient) -> None:
+        # Two calls now: the relevance decision, then the answer itself.
         respx.post(f"{OLLAMA}/api/chat").mock(
-            return_value=httpx.Response(
-                200,
-                text=(
-                    '{"message":{"content":"Twenty-three days"},"done":false}\n'
-                    '{"message":{"content":" [1]."},"done":true}\n'
+            side_effect=[
+                httpx.Response(200, json={"message": {"content": "YES"}}),
+                httpx.Response(
+                    200,
+                    text=(
+                        '{"message":{"content":"Twenty-three days"},"done":false}\n'
+                        '{"message":{"content":" [1]."},"done":true}\n'
+                    ),
                 ),
-            )
+            ]
         )
 
         response = client.post(
@@ -141,7 +190,10 @@ class TestAnswering:
         self, client: TestClient
     ) -> None:
         route = respx.post(f"{OLLAMA}/api/chat").mock(
-            return_value=httpx.Response(200, text='{"message":{"content":"ok"},"done":true}\n')
+            side_effect=[
+                httpx.Response(200, json={"message": {"content": "YES"}}),
+                httpx.Response(200, text='{"message":{"content":"ok"},"done":true}\n'),
+            ]
         )
 
         client.post(
@@ -174,6 +226,7 @@ class TestAnswering:
         self, client: TestClient
     ) -> None:
         respx.post(f"{OLLAMA}/api/chat").mock(return_value=httpx.Response(404, text="no model"))
+        # The gate call is the first to fail, which is where the error surfaces.
 
         response = client.post(
             "/v1/answer", json={"question": "Anything?", "passages": ["Something."]}
@@ -190,11 +243,16 @@ class TestAnswering:
 
 
 class TestPrompt:
-    def test_instructs_the_model_to_refuse_when_the_passages_do_not_answer(self) -> None:
-        # A retrieval system that invents an answer when the corpus lacks one is
-        # worse than useless, so "I don't know" has to be an allowed outcome.
-        assert "do not answer the question" in SYSTEM_PROMPT
-        assert "do not cover this" in SYSTEM_PROMPT.lower()
+    def test_the_gate_asks_for_a_single_word(self) -> None:
+        # A binary decision with nothing else in the instruction is what a small
+        # model is reliable at; adding "and then answer" is what broke it.
+        assert "YES or NO" in GATE_SYSTEM_PROMPT
+        assert "one word" in GATE_SYSTEM_PROMPT
+
+    def test_the_gate_warns_that_closest_is_not_relevant(self) -> None:
+        # The whole failure mode in one sentence: vector search always returns
+        # its nearest neighbours, however far away they are.
+        assert "Closest is not sufficient" in GATE_SYSTEM_PROMPT
 
     def test_requires_a_citation_for_every_claim(self) -> None:
         assert "square brackets" in SYSTEM_PROMPT

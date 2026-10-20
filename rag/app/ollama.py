@@ -61,6 +61,24 @@ class OllamaClient:
 
         return embeddings
 
+    async def decide(self, system: str, user: str) -> str:
+        """One short, non-streaming completion, for a yes-or-no decision.
+
+        Capped at a handful of tokens and run at zero temperature: there is one
+        right answer and no reason to sample around it.
+        """
+        payload: dict[str, Any] = {
+            "model": self._settings.chat_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "stream": False,
+            "options": {"temperature": 0.0, "num_predict": 4},
+        }
+        data = await self._post("/api/chat", payload)
+        return str(data.get("message", {}).get("content", "")).strip()
+
     async def stream_chat(self, system: str, user: str) -> AsyncIterator[str]:
         """Streams a completion token by token.
 
