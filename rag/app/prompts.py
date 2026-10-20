@@ -42,5 +42,7 @@ def build_user_prompt(question: str, passages: list[str]) -> str:
         "<question>\n"
         f"{question.strip()}\n"
         "</question>\n\n"
-        "Answer the question using only the passages above, citing each claim."
+        "First decide whether the passages above actually answer this question. "
+        "If they do not, reply only with: The documents do not cover this. "
+        "If they do, answer using only those passages, citing each claim."
     )

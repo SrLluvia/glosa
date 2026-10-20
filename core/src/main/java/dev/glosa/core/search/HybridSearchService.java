@@ -93,7 +93,8 @@ public class HybridSearchService {
             ),
             semantic as (
                 select c.id,
-                       row_number() over (order by c.embedding <=> cast(? as vector)) as rank
+                       row_number() over (order by c.embedding <=> cast(? as vector)) as rank,
+                       c.embedding <=> cast(? as vector) as distance
                 from chunk c
                 join document d on d.id = c.document_id
                 where d.collection_id = ?
@@ -106,7 +107,8 @@ public class HybridSearchService {
                 select coalesce(k.id, s.id) as id,
                        coalesce(? / (? + k.rank), 0) + coalesce(? / (? + s.rank), 0) as score,
                        k.rank as keyword_rank,
-                       s.rank as semantic_rank
+                       s.rank as semantic_rank,
+                       s.distance as semantic_distance
                 from keyword k
                 full outer join semantic s on s.id = k.id
             )
@@ -114,6 +116,7 @@ public class HybridSearchService {
                    f.score,
                    f.keyword_rank,
                    f.semantic_rank,
+                   f.semantic_distance,
                    c.document_id,
                    d.filename,
                    c.page_number,
@@ -169,9 +172,11 @@ public class HybridSearchService {
                         rs.getString("content"),
                         rs.getDouble("score"),
                         rankOf(rs.getObject("keyword_rank")),
-                        rankOf(rs.getObject("semantic_rank"))),
+                        rankOf(rs.getObject("semantic_rank")),
+                        (Double) rs.getObject("semantic_distance")),
                 query, collectionId, query, mode.usesKeyword(), CANDIDATES_PER_HALF,
-                queryVector, collectionId, mode.usesSemantic(), queryVector, CANDIDATES_PER_HALF,
+                queryVector, queryVector, collectionId, mode.usesSemantic(), queryVector,
+                CANDIDATES_PER_HALF,
                 keywordWeight, fusionConstant, SEMANTIC_WEIGHT, fusionConstant,
                 limit);
     }
@@ -201,6 +206,12 @@ public class HybridSearchService {
      * @param keywordRank  position in the keyword half, or null if it was not
      *                     found there at all
      * @param semanticRank position in the vector half, or null likewise
+     * @param semanticDistance cosine distance from the query, where 0 is
+     *                         identical and larger is less alike. Null when the
+     *                         passage came only from the keyword half. This is
+     *                         the only signal of whether a result is actually
+     *                         relevant, as opposed to merely the closest thing
+     *                         present
      */
     public record RankedPassage(
             UUID chunkId,
@@ -211,6 +222,7 @@ public class HybridSearchService {
             String content,
             double score,
             Integer keywordRank,
-            Integer semanticRank) {
+            Integer semanticRank,
+            Double semanticDistance) {
     }
 }

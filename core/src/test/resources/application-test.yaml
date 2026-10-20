@@ -5,6 +5,13 @@
 # The datasource and migration credentials are supplied dynamically by the
 # Testcontainers base class.
 glosa:
+  search:
+    # Effectively off. The stand-in embeddings hash words into buckets, which
+    # puts texts at distances unrelated to the scale a real model produces, so
+    # a threshold calibrated for one would filter everything here. The
+    # threshold is exercised by a test that sets it deliberately instead.
+    max-useful-distance: 2.0
+
   ingestion:
     # Tests drive the pipeline step by step rather than racing a timer, so the
     # scheduled worker stays off and the service is called directly.

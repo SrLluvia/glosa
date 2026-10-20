@@ -47,6 +47,12 @@ glosa:
     # the corpus: prose favours the semantic half, while a corpus full of error
     # codes and version numbers favours the keyword one.
     keyword-weight: 0.2
+    # Cosine distance beyond which a passage is not worth answering from.
+    # Vector search returns the nearest passages however far away they are, and
+    # nearest is not relevant. Calibrated against the evaluation set, where the
+    # furthest passage that genuinely answered its question sat at 0.507.
+    # Belongs to the embedding model: change the model and measure it again.
+    max-useful-distance: 0.52
     # The k in 1/(k + rank). The familiar value of 60 comes from fusing many
     # rankers of comparable quality over a large corpus, and it deliberately
     # flattens the difference between adjacent positions. That flattening is

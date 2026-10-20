@@ -45,12 +45,15 @@ class SearchController {
             @Schema(description = "Position in the keyword half, or null if it did not match there")
             Integer keywordRank,
             @Schema(description = "Position in the vector half, or null if it did not match there")
-            Integer semanticRank) {
+            Integer semanticRank,
+            @Schema(description = "Cosine distance from the question: 0 is identical, larger is "
+                    + "less alike. Null when the passage came only from the keyword half.")
+            Double semanticDistance) {
 
         static PassageResponse from(HybridSearchService.RankedPassage passage) {
             return new PassageResponse(passage.chunkId(), passage.documentId(), passage.filename(),
                     passage.pageNumber(), passage.heading(), passage.content(), passage.score(),
-                    passage.keywordRank(), passage.semanticRank());
+                    passage.keywordRank(), passage.semanticRank(), passage.semanticDistance());
         }
     }
 
