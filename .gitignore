@@ -41,3 +41,6 @@ Thumbs.db
 dev-token.txt
 dev-collection.txt
 dev-globex-collection.txt
+
+# Python virtualenv in the rag service
+rag/.venv/
