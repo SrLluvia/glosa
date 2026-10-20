@@ -4,7 +4,7 @@ Project memory. Read it before starting work and when resuming a session after a
 context compaction. Update it when closing a phase and when taking an
 architectural decision.
 
-Last updated: 2026-10-15
+Last updated: 2026-10-20
 
 ## Current phase
 
@@ -24,7 +24,7 @@ Done:
 - Access tokens: signing configuration, issuer, role enum. Verified by unit
   tests covering expiry, a wrong secret and a foreign issuer.
 
-The suite is green: 75 tests, in CI as well as locally.
+The suite is green: 84 Java tests and 18 Python tests, in CI as well as locally.
 
 Next, in order:
 
@@ -70,6 +70,10 @@ document, watch it be ingested, and search the passages it produced.
 | Isolation tests assert on SQLSTATE 42501, not on the error text | The wording of a Postgres message is not a contract; the SQLSTATE is | Matching the message only: broke as soon as Spring wrapped the driver exception |
 | The ingestion worker visits tenants one at a time instead of being granted cross-tenant access | Row Level Security hides the queue from an unbound worker, which is correct. Binding each tenant in turn keeps the invariant that no statement the application makes can see across the boundary | A `BYPASSRLS` role, which would void the project's central claim; a `SECURITY DEFINER` function, which `FORCE ROW LEVEL SECURITY` defeats anyway. Cost is a query per tenant per sweep; past a few hundred tenants, keep a small unscoped table of which tenants have work |
 | A claim commits `RUNNING` before the work starts, and a reaper returns abandoned jobs | Committing first is what stops a second worker taking the row, since the `SKIP LOCKED` lock ends with the transaction. The price is that a crashed worker leaves the row owned by nobody, which the reaper undoes | One transaction around claim and work: a failure would roll back the attempt counter too, so the job would retry forever without backing off |
+| Retrieval halves merged by Reciprocal Rank Fusion, not by weighted score | `ts_rank_cd` and cosine distance measure different things on different scales, so weighing them directly means inventing a conversion. Rank has no units. The constant of 60 stops the top result of either list dominating | A tuned weighted sum: a hidden hyperparameter with no principled value, needing retuning whenever either half changes |
+| Five passages are handed to the model, not twenty | Past a handful the prompt fills with loosely related material, and a model given more evidence picks worse evidence | Filling the context window: slower, costlier and less accurate |
+| Retrieving nothing means refusing to answer | Handing a generator no passages is how a retrieval system starts inventing. "The documents do not cover that" is a correct outcome | Asking anyway and hoping: produces confident answers with no basis |
+| The rag service holds no data and knows nothing about tenants | Tenant isolation is enforced in exactly one place. Spreading it to a second service would mean two things to get right instead of one | Giving the rag service database access: a second boundary to defend for no benefit |
 | PDF parsing lives in the core service, not behind the rag service | Extracting text needs no model. The split between the two services is about what requires Python, which is embeddings and generation, not about what counts as ingestion | Waiting for the rag service: would have left the most common document format broken for no design benefit |
 | Testcontainers mounts the real provisioning script | The isolation tests then exercise the same roles, grants and default privileges as production, instead of a test-only approximation | Creating the role inline in test setup: would prove less and could drift from the script |
 
@@ -95,8 +99,6 @@ improvements.
   `@UpdateTimestamp`. The trigger wins, so behaviour is correct, but there are
   two mechanisms where one would do. Worth collapsing onto `@Generated` so the
   database is the single source of truth and the entity still reads back fresh.
-- Chunks carry no embedding yet. Keyword retrieval works on them already; the
-  vector half arrives with the rag service.
 - Registration is open to anyone. That suits a demo; a deployment would put an
   invite or a payment in front of it.
 - Access tokens cannot be revoked before they expire, and there are no refresh

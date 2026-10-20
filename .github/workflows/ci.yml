@@ -47,3 +47,26 @@ jobs:
           path: core/target/surefire-reports/
           retention-days: 7
           if-no-files-found: ignore
+
+  rag:
+    name: rag (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: rag/pyproject.toml
+
+      - name: Install
+        working-directory: rag
+        run: pip install -e ".[dev]"
+
+      - name: Test
+        working-directory: rag
+        # Ollama is stubbed, so no model is needed here. Whether a real model
+        # answers well is the evaluation suite's job, not this one's.
+        run: pytest -q
